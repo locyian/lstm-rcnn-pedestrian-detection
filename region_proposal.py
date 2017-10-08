@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, time
+import os, sys, time
 
 import numpy as np
 import tensorflow as tf
@@ -45,20 +45,20 @@ def RPN(X, num_anchors, training = False):
 
 def create_train_summaries(learning_rate, clas_loss, reg_loss, rpn_loss, clas_accuracy, clas_positive_percentage, clas_positive_accuracy, VGG16D_activations, clas_activations):
     with tf.name_scope('train'):
-        learning_rate_summary = tf.scalar_summary('learning_rate', learning_rate)
+        learning_rate_summary = tf.summary.scalar('learning_rate', learning_rate)
 
-        loss_clas_summary = tf.scalar_summary('loss/clas', clas_loss)
-        loss_reg_summary = tf.scalar_summary('loss/reg', reg_loss)
-        loss_rpn_summary = tf.scalar_summary('loss/rpn', rpn_loss)
+        loss_clas_summary = tf.summary.scalar('loss/clas', clas_loss)
+        loss_reg_summary = tf.summary.scalar('loss/reg', reg_loss)
+        loss_rpn_summary = tf.summary.scalar('loss/rpn', rpn_loss)
 
-        stat_accuracy_summary = tf.scalar_summary('stat/accuracy', clas_accuracy)
-        stat_positive_percentage_summary = tf.scalar_summary('stat/positive_percentage', clas_positive_percentage)
-        stat_positive_accuracy_summary = tf.scalar_summary('stat/positive_accuracy', clas_positive_accuracy)
+        stat_accuracy_summary = tf.summary.scalar('stat/accuracy', clas_accuracy)
+        stat_positive_percentage_summary = tf.summary.scalar('stat/positive_percentage', clas_positive_percentage)
+        stat_positive_accuracy_summary = tf.summary.scalar('stat/positive_accuracy', clas_positive_accuracy)
 
-        VGG16D_histogram = tf.histogram_summary('activations/VGG16D', VGG16D_activations)
-        clas_histogram = tf.histogram_summary('activations/clas', clas_activations)
+        VGG16D_histogram = tf.summary.histogram('activations/VGG16D', VGG16D_activations)
+        clas_histogram = tf.summary.histogram('activations/clas', clas_activations)
 
-        return tf.merge_summary([learning_rate_summary, loss_clas_summary, loss_reg_summary, loss_rpn_summary, stat_accuracy_summary, stat_positive_percentage_summary, stat_positive_accuracy_summary, VGG16D_histogram, clas_histogram])
+        return tf.summary.merge([learning_rate_summary, loss_clas_summary, loss_reg_summary, loss_rpn_summary, stat_accuracy_summary, stat_positive_percentage_summary, stat_positive_accuracy_summary, VGG16D_histogram, clas_histogram])
 
 def compute_test_stats(test_placeholders, confusion_matrix):
     print('Confusion matrix:\n{}'.format(confusion_matrix))
@@ -97,19 +97,19 @@ def compute_test_stats(test_placeholders, confusion_matrix):
 
 def create_test_summaries(test_placeholders):
     with tf.name_scope('test'):
-        accuracy_summary = tf.scalar_summary('accuracy', test_placeholders[0])
+        accuracy_summary = tf.summary.scalar('accuracy', test_placeholders[0])
 
-        positive_recall_summary = tf.scalar_summary('recall/positive', test_placeholders[1])
-        negative_recall_summary = tf.scalar_summary('recall/negative', test_placeholders[2])
-        recall_summary = tf.scalar_summary('recall/global', test_placeholders[3])
+        positive_recall_summary = tf.summary.scalar('recall/positive', test_placeholders[1])
+        negative_recall_summary = tf.summary.scalar('recall/negative', test_placeholders[2])
+        recall_summary = tf.summary.scalar('recall/global', test_placeholders[3])
 
-        positive_precision_summary = tf.scalar_summary('precision/positive', test_placeholders[4])
-        negative_precision_summary = tf.scalar_summary('precision/negative', test_placeholders[5])
-        precision_summary = tf.scalar_summary('precision/global', test_placeholders[6])
+        positive_precision_summary = tf.summary.scalar('precision/positive', test_placeholders[4])
+        negative_precision_summary = tf.summary.scalar('precision/negative', test_placeholders[5])
+        precision_summary = tf.summary.scalar('precision/global', test_placeholders[6])
 
-        F_score_summary = tf.scalar_summary('F-score', test_placeholders[7])
+        F_score_summary = tf.summary.scalar('F-score', test_placeholders[7])
 
-        return tf.merge_summary([accuracy_summary, positive_recall_summary, negative_recall_summary, recall_summary, positive_precision_summary, negative_precision_summary,precision_summary, F_score_summary])
+        return tf.summary.merge([accuracy_summary, positive_recall_summary, negative_recall_summary, recall_summary, positive_precision_summary, negative_precision_summary,precision_summary, F_score_summary])
 
 def trainer(caltech, input_placeholder, clas_placeholder, reg_placeholder):
     # Shared CNN
@@ -132,20 +132,20 @@ def trainer(caltech, input_placeholder, clas_placeholder, reg_placeholder):
     reg_truth = tf.reshape(tf.cast(reg_placeholder, tf.float32), [-1, 4]) # Reshape to a big list
 
     # Declare loss functions
-    clas_loss = tf.nn.softmax_cross_entropy_with_logits(clas_rpn, clas_truth)
+    clas_loss = tf.nn.softmax_cross_entropy_with_logits(labels=clas_rpn, logits=clas_truth)
     clas_positive_weight = tf.Variable(CaltechDataset.CLAS_POSITIVE_WEIGHT, trainable = False, name = 'clas_positive_weight')
-    clas_loss = tf.reduce_sum((tf.mul(clas_loss, clas_examples) + (clas_positive_weight - 1.0) * tf.mul(clas_loss, clas_positive_examples)) / clas_positive_weight)
+    clas_loss = tf.reduce_sum((tf.multiply(clas_loss, clas_examples) + (clas_positive_weight - 1.0) * tf.multiply(clas_loss, clas_positive_examples)) / clas_positive_weight)
     clas_loss = tf.div(clas_loss, tf.reduce_sum(clas_examples)) # Normalization
 
-    reg_loss = tf.abs(tf.sub(reg_rpn, reg_truth))
+    reg_loss = tf.abs(tf.subtract(reg_rpn, reg_truth))
     # # This is Smooth L1 as defined in http://www.cv-foundation.org/openaccess/content_iccv_2015/papers/Girshick_Fast_R-CNN_ICCV_2015_paper.pdf
     # # 0.5 * x^2 if |x| < 1
     # # |x| - 0.5 otherwise
-    reg_loss = tf.select(tf.less(reg_loss, 1), tf.mul(tf.square(reg_loss), 0.5), tf.sub(reg_loss, 0.5))
+    reg_loss = tf.where(tf.less(reg_loss, 1), tf.multiply(tf.square(reg_loss), 0.5), tf.subtract(reg_loss, 0.5))
     reg_loss = tf.reduce_sum(reg_loss, reduction_indices = 1)
-    reg_loss = tf.reduce_mean(tf.mul(reg_loss, clas_positive_examples))
+    reg_loss = tf.reduce_mean(tf.multiply(reg_loss, clas_positive_examples))
     lambda_ = tf.Variable(CaltechDataset.LOSS_LAMBDA, trainable = False, name = 'lambda') # Roughly reg_loss & clas_loss are equal, because 100.0 ~ 6000 (num total anchors) / 64 (minibatch size)
-    reg_loss = tf.mul(reg_loss, lambda_) # Scaling
+    reg_loss = tf.multiply(reg_loss, lambda_) # Scaling
 
     rpn_loss = tf.add(clas_loss, reg_loss)
 
@@ -155,9 +155,9 @@ def trainer(caltech, input_placeholder, clas_placeholder, reg_placeholder):
     clas_comparison = tf.cast(tf.equal(clas_answer, clas_guess), tf.float32)
     clas_prob = tf.nn.softmax(clas_rpn)
 
-    clas_accuracy = tf.div(tf.reduce_sum(tf.mul(clas_comparison, clas_examples)), tf.reduce_sum(clas_examples))
+    clas_accuracy = tf.div(tf.reduce_sum(tf.multiply(clas_comparison, clas_examples)), tf.reduce_sum(clas_examples))
     clas_positive_percentage = tf.div(tf.reduce_sum(clas_positive_examples), tf.reduce_sum(clas_examples))
-    clas_positive_accuracy = tf.div(tf.reduce_sum(tf.mul(clas_comparison, clas_positive_examples)), tf.reduce_sum(clas_positive_examples))
+    clas_positive_accuracy = tf.div(tf.reduce_sum(tf.multiply(clas_comparison, clas_positive_examples)), tf.reduce_sum(clas_positive_examples))
 
     global_step = tf.Variable(0, trainable = False, name = 'global_step')
     learning_rate = tf.train.exponential_decay(
@@ -215,7 +215,7 @@ if __name__ == '__main__':
         # Initialize variables
         tf.initialize_all_variables().run()
 
-        vgg_restore_path = 'vgg16/VGG16D.ckpt'
+        vgg_restore_path = None #'vgg16/VGG16D.ckpt'
         full_restore_path = None # '2016-09-13-64minibatch-1posratio-norelu-withreg-4000training-cropped-undesirables-mul2reg/model.14.ckpt'
 
         if full_restore_path:
@@ -228,19 +228,23 @@ if __name__ == '__main__':
             print('VGG model restored from: {}.'.format(vgg_restore_path))
 
         # Start summary writers
-        train_writer = tf.train.SummaryWriter('log/train', sess.graph, flush_secs = 10)
-        valid_writer = tf.train.SummaryWriter('log/valid', flush_secs = 10)
-        test_writer = tf.train.SummaryWriter('log/test', flush_secs = 10)
+        train_writer = tf.summary.FileWriter(os.path.join('log','train'), sess.graph, flush_secs = 10)
+        valid_writer = tf.summary.FileWriter(os.path.join('log','valid'), flush_secs = 10)
+        test_writer = tf.summary.FileWriter(os.path.join('log','test'), flush_secs = 10)
 
         if not full_restore_path:
+            caltech.prepare()
             # Train the model first (and save it)
             last_epoch = 0
             confusion_matrix = np.zeros((2, 2), dtype = np.int64) # Truth as rows, guess as columns
             print('#### EPOCH {:02d} ####'.format(last_epoch))
             while caltech.epoch < CaltechDataset.MAX_EPOCHS:
+                print('Running...')
                 results = sess.run([train_step, train_summaries] + test_steps, feed_dict = caltech.get_training_minibatch(input_placeholder, clas_placeholder, reg_placeholder))
+                print('Writing Summary...')
                 train_writer.add_summary(results[1], global_step = tf.train.global_step(sess, global_step))
 
+                print('Accumulating confusion matrix...')
                 confusion_matrix = accumulate_confusion_matrix(confusion_matrix, results[2], results[3], results[4])
 
                 if caltech.epoch != last_epoch:
@@ -267,7 +271,8 @@ if __name__ == '__main__':
                     confusion_matrix = np.zeros((2, 2), dtype = np.int64)
 
                     # Save the model to disk
-                    save_path = full_saver.save(sess, 'model.{}.ckpt'.format(caltech.epoch - 1))
+                    #print(full_saver._CheckpointFilename())
+                    save_path = full_saver.save(sess, os.path.join('.','model{}.ckpt'.format(caltech.epoch - 1)))
                     print('Model saved: {}'.format(save_path))
 
                     if caltech.epoch != CaltechDataset.MAX_EPOCHS:

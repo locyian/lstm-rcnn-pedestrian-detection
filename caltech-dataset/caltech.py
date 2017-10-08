@@ -12,7 +12,7 @@ def IoU(anchor_box, truth_box):
 
     intersect = max(0.0, min(y1+h1-1, y2+h2-1) - max(y1, y2)) * max(0.0, min(x1+w1-1, x2+w2-1) - max(x1, x2))
 
-    return intersect / (h1 * w1 + h2 * w2 - intersect)
+    return intersect // (h1 * w1 + h2 * w2 - intersect)
 
 def IoA(anchor_box, truth_box): # Intersection over Area (of first parameter)
     (y1, x1, h1, w1) = anchor_box
@@ -20,7 +20,7 @@ def IoA(anchor_box, truth_box): # Intersection over Area (of first parameter)
 
     intersect = max(0.0, min(y1+h1-1, y2+h2-1) - max(y1, y2)) * max(0.0, min(x1+w1-1, x2+w2-1) - max(x1, x2))
 
-    return intersect / (h1 * w1)
+    return intersect // (h1 * w1)
 
 def transform_cropped_pos(pos, transform):
     return (int(round(float(pos[0] - transform[0, 0]) * transform[1, 0])),
@@ -80,7 +80,7 @@ class CaltechDataset:
     USE_CROPPING = True
     CROPPING_THRESHOLD = 20
 
-    def __init__(self, dataset_location = 'caltech-dataset/dataset'):
+    def __init__(self, dataset_location = os.path.join('caltech-dataset','dataset')):
         self.dataset_location = dataset_location
         self.annotations = None
 
@@ -98,7 +98,7 @@ class CaltechDataset:
         self.discover_testing()
 
     def discover_seq(self, set_number, seq_number, skip_frames):
-        num_frames = len(glob.glob(self.dataset_location + '/images/set{:02d}/V{:03d}.seq/*.jpg'.format(set_number, seq_number)))
+        num_frames = len(glob.glob(os.path.join(self.dataset_location,'images','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'*.jpg')))
 
         if skip_frames:
             num_frames = int(floor(num_frames / CaltechDataset.FRAME_MODULO))
@@ -108,8 +108,9 @@ class CaltechDataset:
             return [(set_number, seq_number, i) for i in range(num_frames)]
 
     def discover_set(self, set_number, skip_frames = False):
-        num_sequences = len(glob.glob(self.dataset_location + '/images/set{:02d}/V*.seq'.format(set_number)))
-
+        num_sequences = len(glob.glob(os.path.join(self.dataset_location,'images','set{:02d}'.format(set_number),'V*.seq')))
+        print(os.path.join(self.dataset_location,'images','set{:02d}'.format(set_number),'V*.seq'))
+        print(num_sequences)
         tuples = []
         for seq_number in range(num_sequences):
             tuples += self.discover_seq(set_number, seq_number, skip_frames)
@@ -121,11 +122,12 @@ class CaltechDataset:
         for set_number in range(5 + 1):
             training += self.discover_set(set_number, skip_frames = False)
 
+        print(len(training))
         if CaltechDataset.TRAINING_SIZE == -1:
             self.set_training(training)
         else:
             random.seed(CaltechDataset.RANDOM_SEED) # For reproducibility
-            self.set_training([training[i] for i in sorted(random.sample(range(len(training)), CaltechDataset.TRAINING_SIZE))])
+            self.set_training([training[i] for i in sorted(random.sample(list(range(len(training))), CaltechDataset.TRAINING_SIZE))])
 
     def discover_testing(self):
         testing = []
@@ -136,14 +138,14 @@ class CaltechDataset:
             self.testing = testing
         else:
             random.seed(CaltechDataset.RANDOM_SEED) # For reproducibility
-            self.testing = [testing[i] for i in sorted(random.sample(range(len(testing)), CaltechDataset.TESTING_SIZE))]
+            self.testing = [testing[i] for i in sorted(random.sample(list(range(len(testing))), CaltechDataset.TESTING_SIZE))]
 
         print('{} testing examples kept (out of {})'.format(len(self.testing), len(testing)))
 
     def set_training(self, training):
         # Select a portion of the training set for validation
         random.seed(CaltechDataset.RANDOM_SEED) # For reproducibility
-        indices = range(len(training))
+        indices = list(range(len(training)))
         random.shuffle(indices)
         num_training = len(training) - int(float(len(training)) * CaltechDataset.VALIDATION_RATIO)
 
@@ -161,17 +163,19 @@ class CaltechDataset:
     def get_training_minibatch(self, input_placeholder, clas_placeholder, reg_placeholder):
         input_data, clas_negative, clas_positive, reg_positive = self.load_frame(*self.training[self.training_minibatch])
         self.training_minibatch = self.training_minibatch + 1
+        print('training {} of {}'.format(self.training_minibatch, len(self.training)))
+
         if self.training_minibatch == len(self.training):
             self.training_minibatch = 0
             self.epoch += 1
             self.shuffle_training()
 
-        if clas_negative.shape[1] > CaltechDataset.MINIBATCH_SIZE / 2:
-            selected = np.random.choice(clas_negative.shape[1], CaltechDataset.MINIBATCH_SIZE / 2, replace = False)
+        if clas_negative.shape[1] > CaltechDataset.MINIBATCH_SIZE // 2:
+            selected = np.random.choice(clas_negative.shape[1], CaltechDataset.MINIBATCH_SIZE // 2, replace = False)
             clas_negative = clas_negative[:, selected]
 
-        if clas_positive.shape[1] > CaltechDataset.MINIBATCH_SIZE / 2:
-            selected = np.random.choice(clas_positive.shape[1], CaltechDataset.MINIBATCH_SIZE / 2, replace = False)
+        if clas_positive.shape[1] > CaltechDataset.MINIBATCH_SIZE // 2:
+            selected = np.random.choice(clas_positive.shape[1], CaltechDataset.MINIBATCH_SIZE // 2, replace = False)
             clas_positive = clas_positive[:, selected]
             reg_positive = reg_positive[selected, :]
 
@@ -196,6 +200,7 @@ class CaltechDataset:
             last_frame = True
         else:
             last_frame = False
+        print('validating {} of {}'.format(self.validation_minibatch, len(self.validation)))
 
         clas_data = np.zeros((1, CaltechDataset.OUTPUT_SIZE[0], CaltechDataset.OUTPUT_SIZE[1], self.anchors.num, 2)) # [?, height, width, # anchors, 2]
         reg_data = np.zeros((1, CaltechDataset.OUTPUT_SIZE[0], CaltechDataset.OUTPUT_SIZE[1], self.anchors.num, 4)) # [?, height, width, # anchors, 4]
@@ -219,6 +224,7 @@ class CaltechDataset:
             last_frame = True
         else:
             last_frame = False
+        print('testing {} of {}'.format(self.testing_minibatch, len(self.testing)))
 
         clas_data = np.zeros((1, CaltechDataset.OUTPUT_SIZE[0], CaltechDataset.OUTPUT_SIZE[1], self.anchors.num, 2)) # [?, height, width, # anchors, 2]
         reg_data = np.zeros((1, CaltechDataset.OUTPUT_SIZE[0], CaltechDataset.OUTPUT_SIZE[1], self.anchors.num, 4)) # [?, height, width, # anchors, 4]
@@ -249,7 +255,7 @@ class CaltechDataset:
         if self.annotations:
             return
 
-        with open(self.dataset_location + '/annotations.json') as json_file:
+        with open(os.path.join(self.dataset_location,'annotations.json')) as json_file:
             self.annotations = json.load(json_file)
 
     def parametrize(self, person_pos, anchor_pos):
@@ -349,19 +355,19 @@ class CaltechDataset:
 
     def prepare_frame(self, set_number, seq_number, frame_number):
         self.load_annotations() # Will be needed
-
+        print("Preparing frame: {}".format(frame_number))
         # For saving
-        if not os.path.isdir(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq'.format(set_number, seq_number)):
-            os.makedirs(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq'.format(set_number, seq_number))
+        if not os.path.isdir(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number))):
+            os.makedirs(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number)))
 
         if CaltechDataset.USE_CROPPING:
-            image = Image.open(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
-            transform = np.load(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.transform.npy'.format(set_number, seq_number, frame_number))
+            image = Image.open(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
+            transform = np.load(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.transform.npy'.format(frame_number)))
         else:
-            image = Image.open(self.dataset_location + '/images/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
+            image = Image.open(os.path.join(self.dataset_location,'images','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
 
         input_data = np.expand_dims(np.reshape(np.array(image.getdata(), dtype = np.uint8), [image.size[1], image.size[0], 3]), axis = 0) # [?, height, width, RGB]
-        np.save(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.input.npy'.format(set_number, seq_number, frame_number), input_data)
+        np.save(os.path.join(self.dataset_location, 'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.input.npy'.format(frame_number)), input_data)
 
         # Retrieve objects for that frame in annotations
         try:
@@ -471,10 +477,10 @@ class CaltechDataset:
             reg_positive = np.zeros((0, 4), dtype = np.float32)
 
         clas_negative = np.where(clas_data[:, :, :, 0] == 1.0)
-        np.save(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.negative.npy'.format(set_number, seq_number, frame_number), clas_negative)
+        np.save(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.negative.npy'.format(frame_number)), clas_negative)
         clas_positive = np.where(clas_data[:, :, :, 1] == 1.0)
-        np.save(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.positive.npy'.format(set_number, seq_number, frame_number), clas_positive)
-        np.save(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.reg.npy'.format(set_number, seq_number, frame_number), reg_positive)
+        np.save(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.positive.npy'.format(frame_number)), clas_positive)
+        np.save(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.reg.npy'.format(frame_number)), reg_positive)
 
     def show_frame(self, set_number, seq_number, frame_number):
         self.load_annotations() # Will be needed
@@ -484,10 +490,10 @@ class CaltechDataset:
             self.prepare_frame(set_number, seq_number, frame_number)
 
         if CaltechDataset.USE_CROPPING:
-            image = Image.open(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
-            transform = np.load(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.transform.npy'.format(set_number, seq_number, frame_number))
+            image = Image.open(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
+            transform = np.load(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.transform.npy'.format(frame_number)))
         else:
-            image = Image.open(self.dataset_location + '/images/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
+            image = Image.open(os.path.join(self.dataset_location,'images','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
         dr = ImageDraw.Draw(image)
 
         # Retrieve objects for that frame in annotations
@@ -527,12 +533,12 @@ class CaltechDataset:
                 else:
                     dr.rectangle((pos[1], pos[0], pos[1] + pos[3], pos[0] + pos[2]), outline = 'black')
 
-        clas_negative = np.load(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.negative.npy'.format(set_number, seq_number, frame_number))
+        clas_negative = np.load(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.negative.npy'.format(frame_number)))
         for i in range(clas_negative.shape[1]):
             y, x, anchor_id = clas_negative[:, i]
             dr.rectangle((CaltechDataset.OUTPUT_CELL_SIZE * x, CaltechDataset.OUTPUT_CELL_SIZE * y, CaltechDataset.OUTPUT_CELL_SIZE * (x+1) - 1, CaltechDataset.OUTPUT_CELL_SIZE * (y+1) - 1), outline = 'red')
 
-        clas_positive = np.load(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.positive.npy'.format(set_number, seq_number, frame_number))
+        clas_positive = np.load(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.positive.npy'.format(frame_number)))
         for i in range(clas_positive.shape[1]):
             y, x, anchor_id = clas_positive[:, i]
             pos = self.get_anchor_at(anchor_id, y, x)
@@ -611,13 +617,13 @@ class CaltechDataset:
 
     def save_results(self, set_number, seq_number, frame_number, guess_pos, guess_scores, original_image = False):
         # For saving
-        if not os.path.isdir(self.dataset_location + '/results/set{:02d}/V{:03d}'.format(set_number, seq_number)):
-            os.makedirs(self.dataset_location + '/results/set{:02d}/V{:03d}'.format(set_number, seq_number))
+        if not os.path.isdir(os.path.join(self.dataset_location,'results','set{:02d}'.format(set_number),'V{:03d}'.format(seq_number))):
+            os.makedirs(os.path.join(self.dataset_location,'results','set{:02d}'.format(set_number),'V{:03d}'.format(seq_number)))
 
         if CaltechDataset.USE_CROPPING and original_image:
-            transform = np.load(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.transform.npy'.format(set_number, seq_number, frame_number))
+            transform = np.load(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.transform.npy'.format(frame_number)))
 
-        with open(self.dataset_location + '/results/set{:02d}/V{:03d}/I{:05d}.txt'.format(set_number, seq_number, frame_number), 'w') as file:
+        with open(os.path.join(self.dataset_location,'results','set{:02d}'.format(set_number),'V{:03d}'.format(seq_number),'I{:05d}.txt'.format(frame_number)), 'w') as file:
             for row in range(guess_pos.shape[0]):
                 pos = guess_pos[row]
                 if CaltechDataset.USE_CROPPING and original_image:
@@ -632,12 +638,12 @@ class CaltechDataset:
         if CaltechDataset.USE_CROPPING:
             if display_image:
                 if original_image:
-                    image = Image.open(self.dataset_location + '/images/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
+                    image = Image.open(os.path.join(self.dataset_location,'images','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
                 else:
-                    image = Image.open(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
-            transform = np.load(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.transform.npy'.format(set_number, seq_number, frame_number))
+                    image = Image.open(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
+            transform = np.load(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.transform.npy'.format(frame_number)))
         elif display_image:
-            image = Image.open(self.dataset_location + '/images/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
+            image = Image.open(os.path.join(self.dataset_location,'images','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
 
         if display_image:
             dr = ImageDraw.Draw(image)
@@ -735,13 +741,13 @@ class CaltechDataset:
         return matched_scores, default
 
     def is_frame_prepared(self, set_number, seq_number, frame_number):
-        return os.path.isfile(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.input.npy'.format(set_number, seq_number, frame_number)) and os.path.isfile(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.negative.npy'.format(set_number, seq_number, frame_number)) and os.path.isfile(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.positive.npy'.format(set_number, seq_number, frame_number)) and os.path.isfile(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.reg.npy'.format(set_number, seq_number, frame_number))
+        return os.path.isfile(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.input.npy'.format(frame_number))) and os.path.isfile(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.negative.npy'.format(set_number, seq_number, frame_number)) and os.path.isfile(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.positive.npy'.format(set_number, seq_number, frame_number)) and os.path.isfile(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.reg.npy'.format(frame_number)))
 
     def load_frame(self, set_number, seq_number, frame_number):
-        input_data = np.load(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.input.npy'.format(set_number, seq_number, frame_number))
-        clas_negative = np.load(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.negative.npy'.format(set_number, seq_number, frame_number))
-        clas_positive = np.load(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.positive.npy'.format(set_number, seq_number, frame_number))
-        reg_positive = np.load(self.dataset_location + '/prepared/set{:02d}/V{:03d}.seq/{}.reg.npy'.format(set_number, seq_number, frame_number))
+        input_data = np.load(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.input.npy'.format(frame_number)))
+        clas_negative = np.load(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.negative.npy'.format(frame_number)))
+        clas_positive = np.load(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.positive.npy'.format(frame_number)))
+        reg_positive = np.load(os.path.join(self.dataset_location,'prepared','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.reg.npy'.format(frame_number)))
 
         return input_data, clas_negative, clas_positive, reg_positive
 
@@ -749,10 +755,10 @@ class CaltechDataset:
         self.load_annotations() # Will be needed
 
         # For saving
-        if not os.path.isdir(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq'.format(set_number, seq_number)):
-            os.makedirs(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq'.format(set_number, seq_number))
+        if not os.path.isdir(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number))):
+            os.makedirs(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number)))
 
-        image = Image.open(self.dataset_location + '/images/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
+        image = Image.open(os.path.join(self.dataset_location,'images','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
 
         image_data = np.reshape(np.array(image.getdata(), dtype = np.uint8), [image.size[1], image.size[0], 3])
         greyscale_data = np.mean(image_data, axis = 2)
@@ -768,7 +774,7 @@ class CaltechDataset:
 
         cropped_image = Image.fromarray(cropped_data)
         cropped_image = cropped_image.resize(image.size)
-        cropped_image.save(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number))
+        cropped_image.save(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number)))
 
         dy = 0
         if not ys[0]:
@@ -783,10 +789,10 @@ class CaltechDataset:
         scale = (float(image.size[1]) / float(ys.sum()), float(image.size[0]) / float(xs.sum()))
 
         transform = np.array([delta, scale], dtype = np.float32)
-        np.save(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.transform.npy'.format(set_number, seq_number, frame_number), transform)
+        np.save(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.transform.npy'.format(frame_number)), transform)
 
     def is_frame_cropped(self, set_number, seq_number, frame_number):
-        return os.path.isfile(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.jpg'.format(set_number, seq_number, frame_number)) and os.path.isfile(self.dataset_location + '/images-cropped/set{:02d}/V{:03d}.seq/{}.transform.npy'.format(set_number, seq_number, frame_number))
+        return os.path.isfile(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.jpg'.format(frame_number))) and os.path.isfile(os.path.join(self.dataset_location,'images-cropped','set{:02d}'.format(set_number),'V{:03d}.seq'.format(seq_number),'{}.transform.npy'.format(frame_number)))
 
     def prepare(self):
         if CaltechDataset.USE_CROPPING:
